@@ -1,0 +1,35 @@
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Virtual environment
+.venv/
+venv/
+
+# Build files
+build/
+dist/
+*.spec
+
+# Installer output
+installer/Output/
+
+# Release archives
+release/*/*.zip
+
+# IDE
+.idea/
+.vscode/
+
+# Personal data
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.log
+
+# Local secrets
+.env
+.env.*
+*.secret
