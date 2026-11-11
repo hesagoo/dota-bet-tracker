@@ -33,3 +33,9 @@ release/*/*.zip
 .env
 .env.*
 *.secret
+
+# Generated release metadata
+release/*/*.json
+
+# Windows installers
+*.exe
