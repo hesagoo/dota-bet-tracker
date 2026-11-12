@@ -102,7 +102,7 @@ class ChartBase(QWidget):
         y = min(max(anchor.y() - h / 2, 2), self.height() - h - 2)
         r = QRectF(x, y, w, h)
         p.setPen(QPen(col("border"), 1))
-        p.setBrush(col("card2"))
+        p.setBrush(col("card2", 238))
         p.drawRoundedRect(r, 8, 8)
         for i, t in enumerate(lines):
             p.setPen(col("text" if i else "muted"))

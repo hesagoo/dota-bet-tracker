@@ -1,7 +1,12 @@
 """Базовые элементы интерфейса: карточки, сетка, переключатели."""
-from PySide6.QtCore import Qt, Signal, QPropertyAnimation, QEasingCurve, QSize
-from PySide6.QtWidgets import (QFrame, QLabel, QVBoxLayout, QHBoxLayout, QGridLayout, QWidget, QPushButton,
+from PySide6.QtCore import Qt, Signal, QPropertyAnimation, QEasingCurve, QSize, QRectF, QVariantAnimation
+from PySide6.QtGui import QPainter, QColor, QPainterPath, QPen, QLinearGradient, QRadialGradient, QBrush
+from PySide6.QtWidgets import (QDialog, QFrame, QLabel, QVBoxLayout, QHBoxLayout, QGridLayout, QWidget, QPushButton,
                                QButtonGroup, QScrollArea, QGraphicsOpacityEffect, QSizePolicy)
+
+
+from . import theme
+from .appearance import A
 
 
 def repolish(w):
@@ -31,6 +36,8 @@ def button(text, variant=None, tone=None):
 
 
 def fade_in(widget, ms=220):
+    if A.ms(ms) == 0:
+        return
     eff = QGraphicsOpacityEffect(widget)
     widget.setGraphicsEffect(eff)
     anim = QPropertyAnimation(eff, b"opacity", widget)
@@ -43,7 +50,90 @@ def fade_in(widget, ms=220):
     anim.start()
 
 
-class StatCard(QFrame):
+class GlassFrame(QFrame):
+    """Полупрозрачная «стеклянная» панель: мягкий блик сверху, тонкая светлая граница и плавное свечение рамки
+    при наведении (рисуется вручную: дёшево и без артефактов)."""
+    RADIUS = 14
+    GLOW = 1.0
+
+    def __init__(self):
+        super().__init__()
+        self.setAttribute(Qt.WA_StyledBackground, False)
+        self._h = 0.0
+        self._anim = None
+
+    def _go(self, target):
+        if self._anim is not None:
+            self._anim.stop()
+        ms = A.ms(180)
+        if ms == 0 or not A.glow:
+            self._h = target if A.glow else 0.0
+            self.update()
+            return
+        a = QVariantAnimation(self)
+        a.setStartValue(float(self._h))
+        a.setEndValue(float(target))
+        a.setDuration(ms)
+        a.setEasingCurve(QEasingCurve.OutCubic)
+        a.valueChanged.connect(self._set_h)
+        self._anim = a
+        a.start()
+
+    def _set_h(self, v):
+        self._h = float(v)
+        self.update()
+
+    def enterEvent(self, e):
+        self._go(1.0)
+        super().enterEvent(e)
+
+    def leaveEvent(self, e):
+        self._go(0.0)
+        super().leaveEvent(e)
+
+    def paintEvent(self, e):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        r = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
+        rad = self.RADIUS
+        path = QPainterPath()
+        path.addRoundedRect(r, rad, rad)
+        light = theme.G.get("light", False)
+        base = QColor(theme.P["card"])
+        base.setAlpha(theme.G.get("card_alpha", 255))
+        p.fillPath(path, base)
+        if self.property("hero"):                       # главные карточки: еле заметный акцентный оттенок
+            acc = QColor(theme.P["accent"])
+            g = QLinearGradient(r.topLeft(), r.bottomRight())
+            acc.setAlpha(26 if not light else 22)
+            g.setColorAt(0, acc)
+            acc2 = QColor(acc); acc2.setAlpha(0)
+            g.setColorAt(0.8, acc2)
+            p.fillPath(path, QBrush(g))
+        sheen = QColor(255, 255, 255, theme.G.get("sheen", 12))
+        g = QLinearGradient(r.topLeft(), r.bottomLeft())
+        g.setColorAt(0, sheen)
+        clear = QColor(sheen); clear.setAlpha(0)
+        g.setColorAt(0.55, clear)
+        p.fillPath(path, QBrush(g))
+        line = QColor(theme.G["line"]) if theme.G else QColor(255, 255, 255, 24)
+        p.setPen(QPen(line, 1))
+        p.drawPath(path)
+        h = self._h * self.GLOW
+        if h > 0.01 and A.glow:                         # свечение рамки: несколько тонких слоёв к центру
+            acc = QColor(theme.P["accent"])
+            for i in range(5):
+                c = QColor(acc)
+                c.setAlpha(int(max(0, h * (95 if not light else 70) * (1 - i / 5) ** 2)))
+                p.setPen(QPen(c, 1.2))
+                rr = r.adjusted(i, i, -i, -i)
+                q = QPainterPath()
+                q.addRoundedRect(rr, max(1, rad - i), max(1, rad - i))
+                p.drawPath(q)
+        p.end()
+
+
+class StatCard(GlassFrame):
     def __init__(self, title, hero=False, hint=None):
         super().__init__()
         self.setObjectName("StatCard")
@@ -70,7 +160,9 @@ class StatCard(QFrame):
         repolish(self.value)
 
 
-class Card(QFrame):
+class Card(GlassFrame):
+    GLOW = 0.6
+
     def __init__(self, title=None, right=None):
         super().__init__()
         self.setObjectName("Card")
@@ -223,3 +315,37 @@ class Tile(QPushButton):
         self.v.setText(amount_text)
         self.s.setText(sub)
         self.setEnabled(enabled)
+
+
+class FadeDialog(QDialog):
+    """Диалог в общем стиле: мягкая подсветка, тонкая рамка и плавное появление."""
+
+    def showEvent(self, e):
+        super().showEvent(e)
+        ms = A.ms(150)
+        if ms:
+            self.setWindowOpacity(0.0)
+            a = QPropertyAnimation(self, b"windowOpacity", self)
+            a.setStartValue(0.0)
+            a.setEndValue(1.0)
+            a.setDuration(ms)
+            a.setEasingCurve(QEasingCurve.OutCubic)
+            a.finished.connect(lambda: self.setWindowOpacity(1.0))
+            self._fade = a
+            a.start()
+
+    def paintEvent(self, e):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        w, h = self.width(), self.height()
+        p.fillRect(0, 0, w, h, QColor(theme.P["bg"]))
+        acc = QColor(theme.P["accent"])
+        g = QRadialGradient(w * 0.1, -h * 0.1, max(w, h) * 0.9)
+        acc.setAlpha(30 if not theme.G.get("light") else 26)
+        g.setColorAt(0, acc)
+        acc.setAlpha(0)
+        g.setColorAt(1, acc)
+        p.fillRect(0, 0, w, h, QBrush(g))
+        p.setPen(QPen(theme.G.get("line_hover", QColor(255, 255, 255, 50)), 1))
+        p.drawRect(0, 0, w - 1, h - 1)
+        p.end()

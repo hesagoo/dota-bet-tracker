@@ -5,6 +5,9 @@ from PySide6.QtGui import QIcon, QPixmap, QPainter, QPen, QColor, QKeySequence, 
 from PySide6.QtWidgets import (QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QStackedWidget, QPushButton, QLabel, QApplication)
 
 from . import theme
+from .appearance import A
+from .background import AmbientBackground
+from .fx import GlowManager, Toast, enable_backdrop
 from version import APP_NAME, __version__
 from .dialogs import BetDialog, AmountDialog, PeriodDialog, info
 from .fmt import F
@@ -68,8 +71,16 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(f"{APP_NAME} {__version__}")
         self.resize(1320, 840)
         self.setMinimumSize(1000, 660)
-        root = QWidget()
-        root.setObjectName("Content")
+        # режим размытия Windows 11 нужно выбрать ДО показа окна (по умолчанию выключен)
+        self.backdrop_ok = False
+        if A.backdrop != "off":
+            from .fx import backdrop_supported
+            if backdrop_supported():
+                self.setAttribute(Qt.WA_TranslucentBackground, True)
+                self.backdrop_ok = enable_backdrop(self, A.backdrop)
+        root = AmbientBackground()
+        root.backdrop_ok = self.backdrop_ok
+        self.bg = root
         self.setCentralWidget(root)
         outer = QHBoxLayout(root)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -77,6 +88,7 @@ class MainWindow(QMainWindow):
 
         side = QWidget()
         side.setObjectName("Sidebar")
+        side.setAttribute(Qt.WA_StyledBackground, True)
         side.setFixedWidth(224)
         sl = QVBoxLayout(side)
         sl.setContentsMargins(16, 22, 16, 18)
@@ -136,6 +148,9 @@ class MainWindow(QMainWindow):
         outer.addWidget(right, 1)
 
         self.pages["dashboard"].on_new_bet = self.new_bet
+        self.toast = Toast(root)
+        state.toast.connect(self.toast.show_message)
+        self.glow = GlowManager(app)
         state.changed.connect(self.refresh_all)
         state.settings_changed.connect(self.refresh_all)
         state.period_changed.connect(self._period_changed)
@@ -146,6 +161,7 @@ class MainWindow(QMainWindow):
         self.timer.timeout.connect(self.periodic_backup)
         self.timer.start(30 * 60 * 1000)
         self.apply_icons()
+        self.page_tabs_fade()
         self.current = 0
         self.go(0, animate=False)
         self.startup_backup()
@@ -157,11 +173,20 @@ class MainWindow(QMainWindow):
         for key, b in self.nav:
             b.setIcon(make_icon(key))
 
+    def page_tabs_fade(self):
+        """Плавная смена вкладок внутри страниц (например, «По месяцам / По турнирам»)."""
+        from PySide6.QtWidgets import QTabWidget
+        for tw in self.findChildren(QTabWidget):
+            if not getattr(tw, "_fade_hooked", False):
+                tw._fade_hooked = True
+                tw.currentChanged.connect(lambda _i, tw=tw: fade_in(tw.currentWidget(), 160))
+
     def go(self, i, animate=True):
         self.current = i
         key = self.PAGES[i][0]
         for k, (_, b) in enumerate(self.nav):
             b.setChecked(k == i)
+        GlowManager.refresh_nav([b for _, b in self.nav])
         self.stack.setCurrentIndex(i)
         self.title.setText(self.PAGES[i][1])
         self.period.setVisible(key in ("dashboard", "analytics"))
@@ -185,9 +210,13 @@ class MainWindow(QMainWindow):
             self.pages[k].refresh()
         self._subtitle()
 
-    def apply_theme(self, name):
+    def apply_theme(self, name=None):
+        """Применяет тему и все настройки внешнего вида (прозрачность, акцент, эффекты)."""
         theme.apply_theme(self.app, name)
+        self.bg.backdrop_ok = self.backdrop_ok
+        self.bg.sync()
         self.apply_icons()
+        GlowManager.refresh_nav([b for _, b in self.nav])
         self.refresh_all()
         for sg in self.findChildren(Segmented):
             sg.updateGeometry()
@@ -222,6 +251,7 @@ class MainWindow(QMainWindow):
                 return
             self.state.db.add_bet(d.bet)
             self.state.reload()
+            self.state.toast.emit("Ставка сохранена")
             if not d.again:
                 return
             stake = None
@@ -233,6 +263,7 @@ class MainWindow(QMainWindow):
         if d.exec() and d.bet:
             self.state.db.update_bet(d.bet)
             self.state.reload()
+            self.state.toast.emit("Изменения сохранены")
 
     # --- обновления ---
     def _update_url(self):

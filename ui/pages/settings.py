@@ -1,9 +1,9 @@
 import os
 from datetime import date
 
-from PySide6.QtCore import QUrl
+from PySide6.QtCore import QUrl, Qt, QTimer
 from PySide6.QtGui import QDesktopServices
-from PySide6.QtWidgets import QComboBox, QCheckBox, QSpinBox, QHBoxLayout, QVBoxLayout, QFileDialog, QApplication, QLineEdit
+from PySide6.QtWidgets import QSlider, QPushButton, QWidget, QComboBox, QCheckBox, QSpinBox, QHBoxLayout, QVBoxLayout, QFileDialog, QApplication, QLineEdit
 from version import DEFAULT_UPDATE_URL
 
 from services.export import export_csv, export_xlsx
@@ -11,6 +11,8 @@ from .. import theme
 from ..dialogs import ask, info, RestoreDialog
 from ..fmt import F
 from ..widgets import Page, Card, ResponsiveGrid, Segmented, label, button
+from ..appearance import A, ACCENTS, GLASS_PRESETS, BACKDROPS
+from ..fx import backdrop_supported
 
 CURRENCIES = [("₽", "Рубли  ₽"), ("$", "Доллары  $"), ("€", "Евро  €"), ("₸", "Тенге  ₸"), ("₴", "Гривны  ₴"),
               ("Br", "Белорусские рубли  Br"), ("", "Без символа")]
@@ -39,7 +41,7 @@ class SettingsPage(Page):
         self.loading = True
 
         look = Card("Оформление и формат")
-        self.theme = Segmented([("dark", "Тёмная"), ("light", "Светлая")], db.get_setting("theme"))
+        self.theme = Segmented([("dark", "Графит"), ("black", "Чёрная"), ("light", "Светлая")], db.get_setting("theme"))
         self.cur = QComboBox()
         for v, t in CURRENCIES:
             self.cur.addItem(t, v)
@@ -56,6 +58,54 @@ class SettingsPage(Page):
                              ("Формат даты", self.date, ""), ("Период при запуске", self.per, "Какой период показывать на дашборде при открытии программы")):
             look.body.addLayout(row(lbl, w, hint))
         self.col.addWidget(look)
+
+        fx = Card("Стиль и эффекты")
+        # прозрачность панелей: быстрые варианты + плавный ползунок
+        box = QWidget()
+        bl = QVBoxLayout(box)
+        bl.setContentsMargins(0, 0, 0, 0)
+        bl.setSpacing(8)
+        self.glass_seg = Segmented([(str(v), n) for n, v in GLASS_PRESETS], str(self._nearest_preset(A.glass)))
+        self.glass_slider = QSlider(Qt.Horizontal)
+        self.glass_slider.setRange(0, 100)
+        self.glass_slider.setValue(A.glass)
+        self.glass_slider.setMinimumWidth(260)
+        bl.addWidget(self.glass_seg, alignment=Qt.AlignRight)
+        bl.addWidget(self.glass_slider)
+        fx.body.addLayout(row("Прозрачность панелей", box, "Текст и графики остаются читаемыми: полностью прозрачными панели не бывают"))
+        # акцентный цвет
+        sw = QWidget()
+        sl = QHBoxLayout(sw)
+        sl.setContentsMargins(0, 0, 0, 0)
+        sl.setSpacing(8)
+        self.swatches = {}
+        for key, (name, hexc) in ACCENTS.items():
+            b = QPushButton()
+            b.setCheckable(True)
+            b.setProperty("swatch", True)
+            b.setFixedSize(30, 30)
+            b.setToolTip(name)
+            b.setCursor(Qt.PointingHandCursor)
+            b.setStyleSheet(f"background: {hexc};")
+            b.clicked.connect(lambda _=False, k=key: self._pick_accent(k))
+            self.swatches[key] = b
+            sl.addWidget(b)
+        fx.body.addLayout(row("Акцентный цвет", sw))
+        self.fx_glow = QCheckBox("Свечение")
+        self.fx_trail = QCheckBox("След курсора")
+        self.fx_anim = QCheckBox("Анимации")
+        fx.body.addLayout(row("Свечение кнопок и рамок", self.fx_glow, "Мягкая подсветка при наведении"))
+        fx.body.addLayout(row("Световой след курсора", self.fx_trail, "Лёгкий след на фоне окна; не перекрывает текст и кнопки"))
+        fx.body.addLayout(row("Декоративные анимации", self.fx_anim, "Плавное появление страниц, окон и уведомлений"))
+        self.backdrop = QComboBox()
+        for k, n in BACKDROPS.items():
+            self.backdrop.addItem(n, k)
+        self.backdrop.setMinimumWidth(220)
+        ok = backdrop_supported()
+        self.backdrop.setEnabled(ok)
+        fx.body.addLayout(row("Размытие фона Windows 11", self.backdrop,
+                              "Экспериментально. Применяется после перезапуска." if ok else "Доступно только в Windows 11 (сборка 22621 и новее)"))
+        self.col.addWidget(fx)
 
         data = Card("Данные и резервные копии")
         open_btn = button("Открыть папку")
@@ -128,6 +178,15 @@ class SettingsPage(Page):
         self.load()
         self.loading = False
         self.theme.changed.connect(lambda v: self.save("theme", v))
+        self.glass_timer = QTimer(self)
+        self.glass_timer.setSingleShot(True)
+        self.glass_timer.timeout.connect(lambda: self._fx_save("glass", str(self.glass_slider.value())))
+        self.glass_seg.changed.connect(self._glass_preset)
+        self.glass_slider.valueChanged.connect(lambda v: self.glass_timer.start(90))
+        self.fx_glow.toggled.connect(lambda v: self._fx_save("fx_glow", "1" if v else "0"))
+        self.fx_trail.toggled.connect(lambda v: self._fx_save("fx_trail", "1" if v else "0"))
+        self.fx_anim.toggled.connect(lambda v: self._fx_save("fx_anim", "1" if v else "0"))
+        self.backdrop.currentIndexChanged.connect(lambda: self._fx_save("backdrop", self.backdrop.currentData(), restart=True))
         self.cur.currentIndexChanged.connect(lambda: self.save("currency", self.cur.currentData()))
         self.date.currentIndexChanged.connect(lambda: self.save("date_fmt", self.date.currentData()))
         self.per.currentIndexChanged.connect(lambda: self.save("default_period", self.per.currentData(), False))
@@ -142,6 +201,15 @@ class SettingsPage(Page):
         self.date.setCurrentIndex(max(0, self.date.findData(db.get_setting("date_fmt"))))
         self.per.setCurrentIndex(max(0, self.per.findData(db.get_setting("default_period"))))
         self.auto.setChecked(db.get_setting("auto_backup") == "1")
+        A.load(db)
+        self.glass_slider.setValue(A.glass)
+        self.glass_seg.set_value(str(self._nearest_preset(A.glass)))
+        for k, b in self.swatches.items():
+            b.setChecked(k == A.accent)
+        self.fx_glow.setChecked(A.glow)
+        self.fx_trail.setChecked(A.trail)
+        self.fx_anim.setChecked(A.anim)
+        self.backdrop.setCurrentIndex(max(0, self.backdrop.findData(A.backdrop)))
         self.keep.setValue(int(db.get_setting("backup_keep") or 15))
         self.upd_auto.setChecked(db.get_setting("update_check") == "1")
 
@@ -149,6 +217,31 @@ class SettingsPage(Page):
         t = self.state.db.last_backup_time()
         n = len(self.state.db.list_backups())
         self.last.setText(f"Последняя копия: {F.dt(t) if t else 'ещё не создавалась'}   ·   всего копий: {n}")
+
+    @staticmethod
+    def _nearest_preset(v):
+        return min((p[1] for p in GLASS_PRESETS), key=lambda x: abs(x - v))
+
+    def _glass_preset(self, v):
+        self.glass_slider.setValue(int(v))          # дальше сработает общий таймер сохранения
+
+    def _pick_accent(self, key):
+        for k, b in self.swatches.items():
+            b.setChecked(k == key)
+        self._fx_save("accent", key)
+
+    def _fx_save(self, key, value, restart=False):
+        """Сохраняет настройку внешнего вида и сразу применяет её (кроме размытия Windows — оно после перезапуска)."""
+        if self.loading:
+            return
+        self.state.db.set_setting(key, value)
+        if key == "glass":
+            self.glass_seg.set_value(str(self._nearest_preset(int(value))))
+        self.state.apply_settings(emit=False)
+        if restart:
+            self.state.toast.emit("Применится после перезапуска программы")
+        else:
+            self.window_.apply_theme()
 
     def _save_url(self):
         from core import updater as U
@@ -178,6 +271,7 @@ class SettingsPage(Page):
         try:
             p = self.state.db.auto_backup("manual")
             self.refresh()
+            self.state.toast.emit("Резервная копия создана")
             info(self, "Копия создана", f"Файл сохранён:\n{p}")
         except Exception as e:
             info(self, "Не удалось создать копию", str(e))

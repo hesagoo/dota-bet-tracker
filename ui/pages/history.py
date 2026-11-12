@@ -206,6 +206,7 @@ class HistoryPage(Page):
         if ask(self, "Удаление", text + "\nЕё влияние на банк и статистику будет полностью убрано. Отменить это нельзя.", "Удалить"):
             self.state.db.delete_bets(ids)
             self.state.reload()
+            self.state.toast.emit("Ставка удалена" if len(ids) == 1 else f"Удалено ставок: {len(ids)}")
 
     def _menu(self, pos):
         ids = self._selected_ids()
@@ -225,6 +226,7 @@ class HistoryPage(Page):
         for i in ids:
             self.state.db.set_result(i, res)
         self.state.reload()
+        self.state.toast.emit("Результат обновлён")
 
     def _export(self):
         if not self.shown:

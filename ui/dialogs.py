@@ -10,11 +10,29 @@ from core.calculator import validate_bet, bet_profit, stake_options
 from core.models import (Bet, PENDING, WIN, LOSS, REFUND, TYPE_SINGLE, TYPE_EXPRESS, RESULT_LABELS)
 from core.money import parse_decimal, q2
 from .fmt import F
-from .widgets import Segmented, label, button
+from .widgets import Segmented, label, button, FadeDialog
+from .appearance import A
+from PySide6.QtCore import QPropertyAnimation, QEasingCurve
+
+
+class FadeBox(QMessageBox):
+    def showEvent(self, e):
+        super().showEvent(e)
+        ms = A.ms(140)
+        if ms:
+            self.setWindowOpacity(0.0)
+            a = QPropertyAnimation(self, b"windowOpacity", self)
+            a.setStartValue(0.0)
+            a.setEndValue(1.0)
+            a.setDuration(ms)
+            a.setEasingCurve(QEasingCurve.OutCubic)
+            a.finished.connect(lambda: self.setWindowOpacity(1.0))
+            self._fade = a
+            a.start()
 
 
 def ask(parent, title, text, yes="Да", no="Отмена"):
-    m = QMessageBox(parent)
+    m = FadeBox(parent)
     m.setWindowTitle(title)
     m.setText(text)
     m.setIcon(QMessageBox.Question)
@@ -26,7 +44,7 @@ def ask(parent, title, text, yes="Да", no="Отмена"):
 
 
 def info(parent, title, text, icon=QMessageBox.Information):
-    m = QMessageBox(parent)
+    m = FadeBox(parent)
     m.setWindowTitle(title)
     m.setText(text)
     m.setIcon(icon)
@@ -42,7 +60,7 @@ def _field(text, widget):
     return box
 
 
-class BetDialog(QDialog):
+class BetDialog(FadeDialog):
     TONES = {PENDING: "pending", WIN: "win", LOSS: "loss", REFUND: "refund"}
 
     def __init__(self, state, bet=None, parent=None, stake=None):
@@ -212,7 +230,7 @@ class BetDialog(QDialog):
         self.accept()
 
 
-class AmountDialog(QDialog):
+class AmountDialog(FadeDialog):
     """Пополнение, вывод и изменение начального банка."""
 
     def __init__(self, title, field, button_text, info_text="", initial="", allow_zero=False, limit=None,
@@ -266,7 +284,7 @@ class AmountDialog(QDialog):
         self.accept()
 
 
-class PeriodDialog(QDialog):
+class PeriodDialog(FadeDialog):
     def __init__(self, start=None, end=None, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Произвольный период")
@@ -308,7 +326,7 @@ class PeriodDialog(QDialog):
         self.accept()
 
 
-class RestoreDialog(QDialog):
+class RestoreDialog(FadeDialog):
     def __init__(self, db, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Восстановление из копии")

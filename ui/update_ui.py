@@ -8,7 +8,7 @@ from core import updater as U
 from core.paths import is_frozen, app_root
 from version import EXE_NAME, __version__
 from .dialogs import info
-from .widgets import label, button
+from .widgets import label, button, FadeDialog
 
 
 class CheckWorker(QThread):
@@ -65,7 +65,7 @@ class PrepareWorker(QThread):
             self.done.emit("", f"Ошибка при подготовке обновления: {e}")
 
 
-class UpdateDialog(QDialog):
+class UpdateDialog(FadeDialog):
     def __init__(self, state, upd, parent=None):
         super().__init__(parent)
         self.state, self.upd, self.worker = state, upd, None

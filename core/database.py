@@ -31,6 +31,7 @@ DEFAULT_SETTINGS = {
     "currency": "₽", "date_fmt": "%d.%m.%Y", "theme": "dark",
     "auto_backup": "1", "backup_keep": "15", "default_period": "all",
     "update_url": "", "update_check": "1",
+    "accent": "ice", "glass": "30", "fx_glow": "1", "fx_trail": "1", "fx_anim": "1", "backdrop": "off",
 }
 
 

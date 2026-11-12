@@ -4,7 +4,7 @@ echo ============================================
 echo  Building DotaBetTracker.exe (a few minutes)
 echo ============================================
 where py >nul 2>nul
-if %errorlevel%==0 (set PY=py) else (set PY=python)
+if %errorlevel%==0 (set PY=py -3.12) else (set PY=python)
 if not exist assets\icon.ico %PY% tools\make_icon.py
 %PY% -m PyInstaller --noconfirm --clean --windowed --name DotaBetTracker --icon assets\icon.ico --add-data "assets;assets" --collect-submodules openpyxl main.py
 if errorlevel 1 (

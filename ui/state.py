@@ -6,6 +6,7 @@ from PySide6.QtCore import QObject, Signal
 from core import stats as st
 from core.calculator import bank_summary
 from .fmt import F
+from .appearance import A
 
 PERIODS = {"7": 7, "30": 30, "90": 90}
 
@@ -14,6 +15,7 @@ class AppState(QObject):
     changed = Signal()
     period_changed = Signal()
     settings_changed = Signal()
+    toast = Signal(str)             # короткое уведомление внизу окна
 
     def __init__(self, db):
         super().__init__()
@@ -36,6 +38,7 @@ class AppState(QObject):
     def apply_settings(self, emit=True):
         F.currency = self.db.get_setting("currency")
         F.date_fmt = self.db.get_setting("date_fmt")
+        A.load(self.db)
         if emit:
             self.settings_changed.emit()
 

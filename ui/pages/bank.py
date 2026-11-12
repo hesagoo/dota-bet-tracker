@@ -109,6 +109,7 @@ class BankPage(Page):
         if d.exec():
             self.state.db.add_op(OP_DEPOSIT, d.value, d.comment_text)
             self.state.reload()
+            self.state.toast.emit("Банк пополнен")
 
     def withdraw(self):
         avail = self.state.summary["available"]
@@ -118,6 +119,7 @@ class BankPage(Page):
         if d.exec():
             self.state.db.add_op(OP_WITHDRAW, -d.value, d.comment_text)
             self.state.reload()
+            self.state.toast.emit("Вывод записан")
 
     def change_initial(self):
         old = self.state.summary["initial"]
@@ -135,6 +137,7 @@ class BankPage(Page):
             txt += f". {d.comment_text}"
         self.state.db.add_op(OP_INITIAL_CHANGE, delta, txt)
         self.state.reload()
+        self.state.toast.emit("Начальный банк изменён")
 
     def delete_op(self):
         op = self._selected()
@@ -158,6 +161,7 @@ class BankPage(Page):
             info(self, "Не удалось удалить", str(e))
             return
         self.state.reload()
+        self.state.toast.emit("Операция удалена")
 
     def _menu(self, pos):
         if self._selected():

@@ -142,8 +142,11 @@ class DashboardPage(Page):
     def _pending(self):
         while self.pending_box.count():
             it = self.pending_box.takeAt(0)
-            if it.widget():
-                it.widget().deleteLater()
+            w = it.widget()
+            if w:
+                w.hide()                 # сразу убираем с экрана, не дожидаясь удаления
+                w.setParent(None)
+                w.deleteLater()
         pend = [b for b in self.state.bets if b.result == PENDING]
         self.pending_card.setVisible(True)
         if not pend:
@@ -164,7 +167,7 @@ class DashboardPage(Page):
             h.addLayout(text, 1)
             for res, txt, tn in ((WIN, "Выигрыш", "win"), (LOSS, "Проигрыш", "loss"), (REFUND, "Возврат", "refund")):
                 btn = button(txt, "mini", tn)
-                btn.clicked.connect(lambda _=False, i=b.id, r=res: self.state.set_result(i, r))
+                btn.clicked.connect(lambda _=False, i=b.id, r=res: (self.state.set_result(i, r), self.state.toast.emit("Результат сохранён")))
                 h.addWidget(btn)
             self.pending_box.addWidget(row)
         if len(pend) > 8:
